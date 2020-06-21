@@ -1,0 +1,190 @@
+42672257164310
+aep
+1X04_1.2MM
+PLATED THROUGH HOLE - 4 PIN NO SILK OUTLINE
+PLATED THROUGH HOLE - 4 PIN NO SILK OUTLINE
+0
+4
+4
+aep
+1X04_1.4MM
+PLATED THROUGH HOLE - 4 PIN NO SILK OUTLINE
+PLATED THROUGH HOLE - 4 PIN NO SILK OUTLINE
+0
+4
+4
+aep
+1x04_P5.08
+Terminal Block Phoenix MKDS-1,5-4-5.08, 4 pins, pitch 5.08mm, size 20.3x9.8mm^2, drill diamater 1.3mm, pad diameter 2.6mm, see http://www.farnell.com/datasheets/100425.pdf, script-generated using https://github.com/pointhi/kicad-footprint-generator/scripts/TerminalBlock_Phoenix
+THT Terminal Block Phoenix MKDS-1,5-4-5.08 pitch 5.08mm size 20.3x9.8mm^2 drill 1.3mm pad 2.6mm
+0
+4
+4
+aep
+6300T75
+http://optoelectronics.liteon.com/upload/download/DS22-2008-0044/LTST-C19HE1WT.pdf
+
+0
+4
+4
+aep
+ACM70V
+
+
+0
+4
+4
+aep
+BL654
+
+
+0
+72
+72
+aep
+BatteryHolder_Keystone_2468_2xAAA
+2xAAA cell battery holder, Keystone P/N 2468, http://www.keyelco.com/product-pdf.cfm?p=1033
+AAA battery cell holder
+0
+2
+2
+aep
+BatteryHolder_Keystone_2468_2xAAA_MIDDLE_HOLE
+2xAAA cell battery holder, Keystone P/N 2468, http://www.keyelco.com/product-pdf.cfm?p=1033
+AAA battery cell holder
+0
+2
+2
+aep
+CE-Logo_4.25x3mm_SilkScreen
+CE marking
+Logo CE certification
+0
+0
+0
+aep
+DF65-3P-1.7V
+
+
+0
+5
+4
+aep
+MM60-52B1-G1-R850
+MM60-52B1-G1-R850
+MM60-52B1-G1-R850
+0
+70
+54
+aep
+MM60-EZH059-B5-R650
+
+
+0
+6
+0
+aep
+PE-1210ACC
+
+
+0
+4
+4
+aep
+RoHS-Logo_3mm_SilkScreen
+Restriction of Hazardous Substances Directive Logo
+Logo RoHS
+0
+0
+0
+aep
+SCREW_TAB_M3
+PLATED THROUGH HOLE - 2MM
+PLATED THROUGH HOLE - 2MM
+0
+1
+1
+aep
+SLP3-150
+
+
+0
+0
+0
+aep
+SW_1825027-5
+
+
+0
+4
+4
+aep
+TC2030-MCP-NL
+
+
+0
+9
+7
+aep
+TSMT3
+http://www.ti.com/lit/ds/symlink/tpd2eusb30.pdf
+
+0
+3
+3
+aep
+WEEE-Logo_2.1x3mm_SilkScreen
+Waste Electrical and Electronic Equipment Directive
+Logo WEEE
+0
+0
+0
+aep
+WEEE-Logo_4mm_SilkScreen
+Waste Electrical and Electronic Equipment Directive
+Logo WEEE
+0
+0
+0
+aep
+WSON-12-1EP_3.1x3.1mm_P0.5mm_EP2.5x1.7_ThermalVias
+WSON-12 http://www.ti.com/lit/ds/symlink/lm27762.pdf
+WSON-12
+0
+20
+13
+aep
+XCVR_SPSGRF-868
+
+
+0
+11
+11
+aep
+artanis
+
+
+0
+0
+0
+aep
+devguard
+
+
+0
+0
+0
+aep
+mpcie-full-card
+
+
+0
+54
+52
+aep
+nanosim-Wurth-693043020611
+
+
+0
+12
+7

@@ -1,0 +1,124 @@
+using <esp_vfs.h> as vfs;
+using <esp_system.h> as esp;
+using io;
+using <fcntl.h>::{open, O_RDWR};
+using err;
+using log;
+using "freertos.h" as freertos;
+
+export fn chan(char *path, io::Async mut* unsafe async) -> io::Io
+{
+    int fd = unsafe<int>(open("/xchan/1", O_RDWR));
+    err::assert(fd > 0);
+    let mut a = io::select::unix(fd);
+    a.ctx.async = async;
+    return a;
+}
+
+static vfs::esp_vfs_t myfs = vfs::esp_vfs_t {
+    flags : vfs::ESP_VFS_FLAG_DEFAULT,
+    write : myfs_write,
+    open  : myfs_open,
+    close : myfs_close,
+    read  : myfs_read,
+    start_select:  myfs_start_select,
+    end_select:    myfs_end_select,
+};
+
+struct Q {
+    usize refcount;
+    freertos::QueueHandle_t q;
+}
+
+static Q mut qs[16] = {Q{refcount:0}};
+
+static vfs::esp_vfs_select_sem_t mut sem = {0};
+static bool mut has_sem = false;
+
+
+
+export fn init() {
+    esp::ESP_ERROR_CHECK(vfs::esp_vfs_register("/xchan", &myfs, 0));
+}
+
+fn myfs_write(usize fd, char * data, usize size) -> usize
+    where len(data) >= size
+{
+    err::assert(fd < static(len(qs)));
+
+
+    usize mut i = 0;
+    for (; i < size; i++) {
+        if !unsafe<bool>(esp::xQueueSendFromISR(qs[fd].q, data+i, 0)) {
+            break;
+        }
+    }
+
+    if (has_sem) {
+        esp::esp_vfs_select_triggered(sem);
+    }
+    return i;
+}
+
+fn myfs_read (usize fd, char mut *dst, usize size) -> usize
+    where len(dst) >= size
+{
+    err::assert(fd < static(len(qs)));
+
+    for (usize mut i = 0; i < size; i++) {
+        if !unsafe<bool>(esp::xQueueReceiveFromISR(qs[fd].q, dst + i, 0)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+fn myfs_open(char *path, int flags, int mode) -> int
+{
+    //TODO
+    usize fd = 0;
+
+    if qs[fd].refcount == 0 {
+        qs[fd].q = unsafe<freertos::QueueHandle_t>(esp::xQueueCreate(10, 1));
+        if qs[fd].q == 0 {
+            return -1;
+        }
+    }
+    qs[fd].refcount += 1;
+
+    return (int)fd;
+}
+
+fn myfs_close(usize fd)
+{
+    err::assert(fd < static(len(qs)));
+    if qs[fd].refcount == 0 {
+        return;
+    }
+    qs[fd].refcount -= 1;
+    if qs[fd].refcount == 0 {
+        esp::vQueueDelete(qs[fd].q);
+    }
+}
+
+fn myfs_start_select(
+    int nfds,
+    esp::fd_set mut* readfds,
+    esp::fd_set mut * writefds,
+    esp::fd_set mut *exceptfds,
+    vfs::esp_vfs_select_sem_t select_sem,
+    void mut * mut *end_select_args
+) -> esp::esp_err_t
+{
+    sem = select_sem;
+    has_sem = true;
+    *end_select_args = 0;
+
+    return unsafe<esp::esp_err_t>(esp::ESP_OK);
+}
+
+fn myfs_end_select(void *end_select_args) -> esp::esp_err_t
+{
+    has_sem = false;
+    return unsafe<esp::esp_err_t>(esp::ESP_OK);
+}

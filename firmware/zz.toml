@@ -1,0 +1,34 @@
+[project]
+version = "0.1.0"
+name = "main"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+log = "1"
+mem = "1"
+esp32 = "1"
+time = "1"
+carrier = "1"
+hex = "1"
+
+[repos]
+nursery = "/home/aep/proj/zznursery/"
+
+[[artifacts]]
+type     = "esp32"
+name     = "main"
+main     = "main"
+requires = [
+    "nvs_flash",
+    "spi_flash",
+    "bootloader_support",
+    "app_update",
+    "wifi_provisioning",
+]

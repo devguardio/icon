@@ -1,0 +1,317 @@
+using log;
+using esp32;
+using err;
+using xchan;
+using hex;
+using carrier::esp32 as carrier;
+
+using "freertos.h"      as freertos;
+using <driver/i2c.h>    as i2c;
+using <esp_system.h>    as esp;
+using <nvs_flash.h>     as esp_nvs;
+using <esp_netif.h>     as esp_netif;
+using <esp_event.h>     as esp_event;
+using <driver/spi_master.h> as spi;
+using <stdlib.h>::{atoi};
+
+using "provision.h"     as provision;
+
+inline using "button.h" as button;
+
+
+const usize NUM_PIXELS          = 69 * 2;
+
+const usize PIN_NUM_MOSI        = 16;
+const usize PIN_NUM_CLK         = 17;
+
+const usize maxSPIFrameInBytes = 8000;
+const usize maxSPIFrequency    = 80000;
+
+
+//SPI Vars
+static spi::spi_device_handle_t     mut spi_handle      = {0};
+static spi::spi_transaction_t       mut spi_transfer    = {0};
+
+struct Pixel packed {
+    u8 brightness;
+    u8 b;
+    u8 g;
+    u8 r;
+};
+static Pixel mut * mut display_buf = 0;
+
+enum Animation {
+    Booting,
+    Provision,
+    ConnectingWifi,
+    ConnectingCarrier,
+    NoStream,
+    Stop,
+    Go,
+}
+
+static Animation mut current_animation = Animation::Booting;
+static usize mut animation_at = 0;
+
+
+fn setup_light(err::Err+et mut *e)
+    where err::checked(*e)
+{
+    esp::spi_bus_config_t mut buscfg = {0};
+    unsafe {
+	    buscfg.miso_io_num=-1;
+	    buscfg.mosi_io_num=PIN_NUM_MOSI;
+	    buscfg.sclk_io_num=PIN_NUM_CLK;
+	    buscfg.quadwp_io_num=-1;
+	    buscfg.quadhd_io_num=-1;
+	    buscfg.max_transfer_sz=maxSPIFrameInBytes;
+    }
+
+    esp::spi_device_interface_config_t mut devcfg = {0};
+    unsafe {
+	    devcfg.clock_speed_hz=maxSPIFrequency;
+	    devcfg.mode=0;
+	    devcfg.spics_io_num=-1;
+	    devcfg.queue_size=1;
+    }
+
+	esp::ESP_ERROR_CHECK(esp::spi_bus_initialize(esp::VSPI_HOST, &buscfg, 1));
+	esp::ESP_ERROR_CHECK(esp::spi_bus_add_device(esp::VSPI_HOST, &devcfg, &spi_handle));
+
+
+    usize endlen   = 1; // round( (numLEDs/2)/8 );
+    usize display_buf_len = (1 + NUM_PIXELS + endlen) * 4;
+
+    display_buf = esp::malloc(display_buf_len);
+    esp::memset(display_buf, 255, display_buf_len);
+    //start frame
+    esp::memset(display_buf, 0, 4);
+
+	esp::memset(&spi_transfer, 0, sizeof(esp::spi_transaction_t));
+	unsafe{
+        spi_transfer.length    = display_buf_len * 8;
+    	spi_transfer.tx_buffer = display_buf;
+    }
+
+    clear();
+    render();
+}
+
+fn setPixel(usize pixel,  u8 r, u8 g, u8 b)
+    where pixel < NUM_PIXELS
+{
+    static_attest(len(display_buf) == NUM_PIXELS + 1);
+
+    //global brightness is very confusing, so we just dont use it
+    display_buf[pixel + 1].brightness = 255;
+    display_buf[pixel + 1].r = r/2;
+    display_buf[pixel + 1].g = g/2;
+    display_buf[pixel + 1].b = b/2;
+}
+
+fn clear() {
+    static_attest(len(display_buf) == NUM_PIXELS + 1);
+    // brightness semes to be used as sync marker. we can't just zero it out
+    for (usize mut i = 1; i < NUM_PIXELS + 1; i++) {
+        display_buf[i].brightness = 255;
+        display_buf[i].r = 0;
+        display_buf[i].g = 0;
+        display_buf[i].b = 0;
+    }
+}
+
+fn render() {
+    esp::ESP_ERROR_CHECK(esp::spi_device_queue_trans(spi_handle, &spi_transfer, esp::portMAX_DELAY));
+}
+
+
+using io;
+using carrier::endpoint;
+using carrier::cmd_common;
+using carrier::bootstrap;
+using net;
+using time;
+using carrier::publish;
+using carrier::config;
+using carrier::pub_sysinfo;
+using carrier::stream;
+using hpack;
+using string;
+using slice;
+
+fn carrier_main(void*_) {
+    current_animation = Animation::ConnectingCarrier;
+
+    log::info("REMAINING STACK at m1 %d", esp::uxTaskGetStackHighWaterMark(0));
+
+
+    err::Err+1000 mut*e = esp::malloc(sizeof(err::Err) + 1000);
+    err::assert_safe(e);
+    e->make();
+
+    new async  = io::select::make();
+
+    endpoint::Endpoint+30000 mut*ep = esp::malloc(sizeof(endpoint::Endpoint) + 30000);
+    err::assert_safe(ep);
+    ep->native(e);
+    e->abort();
+
+    cmd_common::print_identity(ep);
+
+    log::info("bootstrap");
+    bootstrap::sync(e, &(ep->vault), net::os(), &async, time::from_seconds(30));
+    e->abort();
+
+    ep->start(e, net::os(), &async);
+    e->abort();
+
+    io::await(&async, e, endpoint::poll, ep, time::from_seconds(30));
+    e->abort();
+
+    publish::publish(ep, e);
+    e->abort();
+
+    config::register(ep);
+    pub_sysinfo::register(ep);
+    carrier::register_reboot(ep);
+    carrier::register_ota(ep);
+    ep->register_stream(&PanelShow);
+    //ep->register_stream(&SensorDebugConfig);
+    //ep->register_stream(&SensorSettings);
+
+    current_animation = Animation::NoStream;
+
+    io::await(&async, e, endpoint::poll, ep, time::infinite());
+    e->abort();
+
+    esp::esp_restart();
+}
+
+static stream::Config PanelShow = stream::Config {
+    path:   "/v0/icon/pixel",
+    open:   pixel_open,
+    close:  pixel_close,
+    stream: pixel_stream,
+};
+
+fn pixel_open(stream::Stream mut* self, err::Err+et mut *e, slice::Slice * headers)
+    where err::checked(*e)
+{
+    let frame = self->stream(e, 20);
+    if err::check(e) { return; }
+    hpack::encoder::encode(frame, e, (u8*)":status", 7, (u8*)"200", 3);
+}
+
+
+
+
+fn pixel_stream(stream::Stream mut* self, err::Err+et mut *e, slice::Slice * data)
+    where err::checked(*e)
+{
+    for (usize mut i = 0; i < data->size; ) {
+        if i + 3 >= data->size {
+            break;
+        }
+        usize pixel = (usize)data->mem[i+0];
+        if pixel  < NUM_PIXELS {
+            setPixel(pixel,  data->mem[i+1], data->mem[i+2], data->mem[i+3]);
+        }
+        i+=4;
+    }
+    render();
+}
+
+fn pixel_close(stream::Stream mut* self, err::Err+et mut *e)
+    where err::checked(*e)
+{
+}
+
+
+using carrier::vault_esp32;
+using carrier::identity;
+
+static char * mut device_identity = 0;
+fn load_carrier_device_identity(err::Err+et mut *e)
+    where err::checked(*e)
+{
+    char *strstr = esp::malloc(100);
+    err::assert_safe(strstr);
+    static_attest(len(strstr) == 100);
+
+    new vault = vault_esp32::open(e);
+    e->abort();
+
+    identity::Identity mut id = {0};
+    vault.get_identity(&id);
+    identity::identity_to_str (e, strstr, 100, &id);
+    e->abort();
+
+    if vault.i_close.fn != 0 {
+        static_attest(safe(vault.i_close));
+        vault.i_close(&vault);
+    }
+
+    device_identity = strstr;
+}
+
+export extern fn app_main() {
+    new+1000 e = err::make();
+
+    log::info("bootup\n");
+
+    button::gpio_setup();
+
+    unsafe {
+        esp::esp_err_t mut ee = unsafe<esp::esp_err_t>(esp::nvs_flash_init());
+        if unsafe<bool>(ee == esp::ESP_ERR_NVS_NO_FREE_PAGES) {
+            esp_nvs::nvs_flash_erase();
+            ee = unsafe<esp::esp_err_t>(esp::nvs_flash_init());
+        }
+        esp::ESP_ERROR_CHECK(ee);
+        esp::ESP_ERROR_CHECK(esp_netif::esp_netif_init());
+        esp::ESP_ERROR_CHECK(esp_event::esp_event_loop_create_default());
+        xchan::init();
+    }
+
+    log::info("cpu init okish");
+
+    setup_light(&e);
+    e.abort();
+
+    log::info("board guchi");
+
+    load_carrier_device_identity(&e);
+    e.abort();
+
+    esp::printf("DEVICE IDENTITY: %s\n", device_identity);
+
+    provision::provision_connect(device_identity);
+
+
+    log::info("free heap: %u", unsafe<u32>(esp::esp_get_free_heap_size()));
+    unsafe {
+        freertos::TaskHandle_t mut xHandle = 0;
+        esp::xTaskCreate(carrier_main, "carrier", 20000, 0, 2, &xHandle);
+        esp::configASSERT(xHandle);
+    }
+    log::info("free heap: %u", unsafe<u32>(esp::esp_get_free_heap_size()));
+
+
+
+    log::info("initialized\n");
+
+
+
+    for (;;) {
+        esp::sleep(100);
+    }
+}
+
+
+
+
+//TODO
+export fn image_provision_me() {
+}
+export fn image_waiting_for_wifi() {
+}
